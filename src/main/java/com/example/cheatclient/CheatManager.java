@@ -2,15 +2,29 @@ package com.example.cheatclient;
 
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ClientPlayerEntity;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.item.Items;
+import net.minecraft.network.packet.c2s.play.PlayerInteractEntityC2SPacket;
 import net.minecraft.network.packet.c2s.play.PlayerMoveC2SPacket;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.network.packet.c2s.play.UpdateSelectedSlotC2SPacket;
 import net.minecraft.util.Hand;
+import net.minecraft.util.math.Vec3d;
 import java.util.Random;
 
 public class CheatManager {
-    public static boolean killAura = false, silentAim = false, reach = false;
+    // Toggles
+    public static boolean aimbot = false, silentAim = false, killAura = false;
     public static boolean spinbot = false, jitter = false, bunnyhop = false, runboost = false;
+    public static boolean autoTotem = false, noClip = false, teleport = false;
+
+    // Settings
+    public static float spinSpeed = 45f;
+    public static float silentAimFov = 90f;
+    public static float runboostMultiplier = 1.3f;
+    public static float killAuraRange = 5.0f;
+
     private static int attackCooldown = 0;
     private static final Random random = new Random();
     private static float spinYaw = 0f;
@@ -19,46 +33,89 @@ public class CheatManager {
         if (mc.player == null || mc.world == null) return;
         ClientPlayerEntity player = mc.player;
 
-        if (bunnyhop && mc.options.jumpKey.isPressed() && player.isOnGround()) player.jump();
+        // --- AUTO TOTEM ---
+        if (autoTotem && player.getOffHandStack().getItem() != Items.TOTEM_OF_UNDYING) {
+            for (int i = 0; i < 9; i++) {
+                if (player.getInventory().getStack(i).getItem() == Items.TOTEM_OF_UNDYING) {
+                    mc.getNetworkHandler().sendPacket(new UpdateSelectedSlotC2SPacket(i));
+                    mc.interactionManager.clickSlot(player.playerScreenHandler.syncId, 45, i, net.minecraft.screen.slot.SlotActionType.SWAP, player);
+                    break;
+                }
+            }
+        }
+
+        // --- NO CLIP ---
+        player.noClip = noClip;
+
+        // --- BUNNYHOP ---
+        if (bunnyhop && mc.options.jumpKey.isPressed() && player.isOnGround()) {
+            player.jump();
+        }
+
+        // --- RUNBOOST ---
         if (runboost && !player.isOnGround()) {
             Vec3d v = player.getVelocity();
-            player.setVelocity(v.x * 1.3, v.y, v.z * 1.3);
+            player.setVelocity(v.x * runboostMultiplier, v.y, v.z * runboostMultiplier);
         }
-        if (spinbot) {
-            spinYaw = (spinYaw + 45f) % 360f;
-            player.setYaw(spinYaw);
-            player.prevYaw = spinYaw;
+
+        // --- SPINBOT (Sadece sunucuya döner, ekran dönmez) ---
+        if (spinbot && mc.getNetworkHandler() != null) {
+            spinYaw = (spinYaw + spinSpeed) % 360f;
+            mc.getNetworkHandler().sendPacket(new PlayerMoveC2SPacket.LookAndOnGround(spinYaw, player.getPitch(), player.isOnGround()));
         }
-        if (killAura || silentAim) {
-            PlayerEntity target = findTarget(mc, reach ? 5.0 : 3.0);
+
+        // --- COMBAT (KILLAURA / SILENT AIM) ---
+        if (killAura || silentAim || aimbot) {
+            Entity target = findTarget(mc, killAuraRange);
             if (target != null) {
-                if (silentAim) sendSilentLook(mc, player, target);
-                if (killAura && attackCooldown <= 0) {
-                    mc.interactionManager.attackEntity(player, target);
+                if (silentAim || aimbot) {
+                    sendSilentLook(mc, player, target);
+                }
+                if ((killAura || aimbot) && attackCooldown <= 0) {
+                    // Vanilla bypass: Doğrudan paket gönder
+                    mc.getNetworkHandler().sendPacket(PlayerInteractEntityC2SPacket.attack(target, player.isSneaking()));
                     player.swingHand(Hand.MAIN_HAND);
                     attackCooldown = 10;
                 }
             }
         }
+
+        // --- TELEPORT ---
+        if (teleport && mc.options.forwardKey.isPressed() && mc.options.sprintKey.isPressed()) {
+            player.setPosition(player.getX() + player.getRotationVec(1.0f).x * 5, player.getY(), player.getZ() + player.getRotationVec(1.0f).z * 5);
+            teleport = false; // Tek seferlik
+        }
+
         if (attackCooldown > 0) attackCooldown--;
     }
 
-    private static PlayerEntity findTarget(MinecraftClient mc, double range) {
-        PlayerEntity best = null; double bd = range * range;
-        for (PlayerEntity p : mc.world.getPlayers()) {
-            if (p == mc.player || !p.isAlive()) continue;
+    private static Entity findTarget(MinecraftClient mc, double range) {
+        Entity best = null; double bd = range * range;
+        for (Entity p : mc.world.getEntities()) {
+            if (p == mc.player || !(p instanceof LivingEntity) || !p.isAlive()) continue;
             double d = mc.player.squaredDistanceTo(p);
             if (d < bd) { bd = d; best = p; }
         }
         return best;
     }
 
-    private static void sendSilentLook(MinecraftClient mc, ClientPlayerEntity player, PlayerEntity target) {
+    private static void sendSilentLook(MinecraftClient mc, ClientPlayerEntity player, Entity target) {
         Vec3d eye = player.getEyePos();
         Vec3d t = target.getPos().add(0, target.getHeight() * 0.5, 0).subtract(eye).normalize();
         float y = (float) Math.toDegrees(Math.atan2(-t.x, t.z));
         float p = (float) Math.toDegrees(Math.asin(-t.y));
-        if (jitter) { y += (random.nextFloat() - 0.5f) * 50f; p += (random.nextFloat() - 0.5f) * 50f; }
-        if (mc.getNetworkHandler() != null) mc.getNetworkHandler().sendPacket(new PlayerMoveC2SPacket.LookAndOnGround(y, p, player.isOnGround()));
+        
+        // FOV Kontrolü
+        float yawDiff = Math.abs(player.getYaw() - y) % 360;
+        if (yawDiff > 180) yawDiff = 360 - yawDiff;
+        if (yawDiff > silentAimFov / 2f) return; // FOV dışındaysa dönme
+
+        if (jitter) { 
+            y += (random.nextFloat() - 0.5f) * 50f; 
+            p += (random.nextFloat() - 0.5f) * 50f; 
+        }
+        if (mc.getNetworkHandler() != null) {
+            mc.getNetworkHandler().sendPacket(new PlayerMoveC2SPacket.LookAndOnGround(y, p, player.isOnGround()));
+        }
     }
 }

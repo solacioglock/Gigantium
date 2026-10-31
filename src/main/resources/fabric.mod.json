@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "id": "cheatclient",
+  "version": "${version}",
+  "name": "CheatClient",
+  "environment": "client",
+  "entrypoints": { "client": ["com.example.cheatclient.CheatClient"] },
+  "mixins": ["cheatclient.mixins.json"],
+  "depends": { "fabricloader": ">=0.16.0", "minecraft": "~1.21.1", "java": ">=21", "fabric-api": "*" }
+}

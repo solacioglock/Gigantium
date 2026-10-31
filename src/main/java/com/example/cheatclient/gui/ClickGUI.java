@@ -4,157 +4,221 @@ import com.example.cheatclient.CheatManager;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.text.Text;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.client.gui.widget.SliderWidget;
-import net.minecraft.client.MinecraftClient;
-
 import java.awt.Color;
 
 public class ClickGUI extends Screen {
     private int selectedTab = 0;
     private final String[] tabs = {"COMBAT", "MOVEMENT", "PLAYER", "MISC"};
 
+    // Fareyle sürüklenen slider'ı takip etmek için
+    private int activeSlider = -1;
+
     public ClickGUI() { super(Text.literal("Gigantium Cheats")); }
 
     @Override
     protected void init() {
-        // Ekran yeniden boyutlandığında Slider'ları tekrar ekle
+        // Ekran açıldığında hiçbir vanilla buton eklemiyoruz.
+        // Her şeyi aşağıda kendi çizim fonksiyonumuzla yapacağız.
         this.clearChildren();
-        int centerX = this.width / 2;
-        int centerY = this.height / 2;
-
-        if (selectedTab == 0) {
-            addSlider("Spin Speed", centerX + 10, centerY - 10, 100, 20, CheatManager.spinSpeed, 1, 180, v -> CheatManager.spinSpeed = v);
-            addSlider("Silent Aim FOV", centerX + 10, centerY + 15, 100, 20, CheatManager.silentAimFov, 30, 360, v -> CheatManager.silentAimFov = v);
-            addSlider("KillAura Range", centerX + 10, centerY + 40, 100, 20, CheatManager.killAuraRange, 3, 6, v -> CheatManager.killAuraRange = v);
-        } else if (selectedTab == 1) {
-            addSlider("Runboost Mult", centerX + 10, centerY - 10, 100, 20, CheatManager.runboostMultiplier, 1.0f, 3.0f, v -> CheatManager.runboostMultiplier = v);
-        }
-    }
-
-    private void addSlider(String name, int x, int y, int w, int h, float current, float min, float max, java.util.function.Consumer<Float> setter) {
-        this.addDrawableChild(new SliderWidget(x, y, w, h, Text.literal(name), (current - min) / (max - min)) {
-            @Override
-            protected void updateMessage() {
-                this.setMessage(Text.literal(name + ": " + String.format("%.1f", min + (max - min) * this.value)));
-            }
-            @Override
-            protected void applyValue() {
-                setter.accept((float)(min + (max - min) * this.value));
-            }
-        });
     }
 
     @Override
     public boolean shouldPause() { return false; }
 
+    // Arka planı karartmamak ve blur'u kapatmak için renderBackground'u eziyoruz
+    @Override
+    public void renderBackground(DrawContext context, int mouseX, int mouseY, float delta) {
+        // Sadece hafif bir karartma ekle, blur yok.
+        context.fill(0, 0, this.width, this.height, new Color(0, 0, 0, 120).getRGB());
+    }
+
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-        // Arka plan karartma
-        context.fill(0, 0, this.width, this.height, new Color(0, 0, 0, 150).getRGB());
+        // Arka planı çiz
+        this.renderBackground(context, mouseX, mouseY, delta);
 
-        int cx = this.width / 2 - 200; // Ana pencere X
-        int cy = this.height / 2 - 150; // Ana pencere Y
-        int w = 400;
-        int h = 300;
+        int cx = this.width / 2 - 220; // Ana pencere X
+        int cy = this.height / 2 - 160; // Ana pencere Y
+        int w = 440;
+        int h = 320;
 
-        // Ana pencere arka planı
-        drawRoundedRect(context, cx, cy, w, h, 8, new Color(20, 20, 25, 255).getRGB());
-        // Sol Menü Çubuğu (Sidebar)
-        drawRoundedRect(context, cx, cy, 100, h, 8, new Color(15, 15, 20, 255).getRGB());
+        // 1. ANA PENCERE ARKA PLANI (Tam Opak, Koyu Tema)
+        drawRoundedRect(context, cx, cy, w, h, 6, new Color(22, 22, 26, 255).getRGB());
         
-        // Gigantium Cheats Başlığı
-        context.drawText(this.textRenderer, "§b§lGigantium §fCheats", cx + 10, cy + 15, -1, true);
+        // 2. SOL MENÜ ÇUBUĞU (Sidebar)
+        drawRoundedRect(context, cx, cy, 110, h, 6, new Color(16, 16, 20, 255).getRGB());
+        // Sağ üst köşenin yuvarlaklığını düzeltmek için sidebar'ın sağ tarafını kapat
+        context.fill(cx + 100, cy, cx + 110, cy + h, new Color(16, 16, 20, 255).getRGB());
 
-        // Sidebar Sekmeleri
+        // Başlık
+        context.drawText(this.textRenderer, "§b§lGIGANTIUM", cx + 15, cy + 15, -1, true);
+        context.drawText(this.textRenderer, "§7Cheats v1.0", cx + 15, cy + 28, new Color(150, 150, 150).getRGB(), false);
+
+        // Sekmeler
         for (int i = 0; i < tabs.length; i++) {
-            int ty = cy + 40 + (i * 25);
-            boolean hover = mouseX >= cx && mouseX <= cx + 100 && mouseY >= ty && mouseY <= ty + 20;
-            int color = selectedTab == i ? new Color(60, 60, 80).getRGB() : (hover ? new Color(40, 40, 50).getRGB() : -1);
+            int ty = cy + 50 + (i * 25);
+            boolean hover = mouseX >= cx && mouseX <= cx + 110 && mouseY >= ty && mouseY <= ty + 20;
+            int color = selectedTab == i ? new Color(100, 150, 255).getRGB() : (hover ? new Color(200, 200, 200).getRGB() : new Color(120, 120, 120).getRGB());
             
-            if (selectedTab == i) context.fill(cx + 5, ty, cx + 95, ty + 20, new Color(255, 255, 255, 30).getRGB());
-            context.drawText(this.textRenderer, tabs[i], cx + 15, ty + 6, color, false);
+            if (selectedTab == i) {
+                // Seçili sekme çizgisi
+                context.fill(cx + 5, ty, cx + 8, ty + 20, new Color(100, 150, 255).getRGB());
+                drawRoundedRect(context, cx + 10, ty, 95, 20, 4, new Color(255, 255, 255, 15).getRGB());
+            }
+            context.drawText(this.textRenderer, tabs[i], cx + 18, ty + 6, color, false);
         }
 
-        // Toggle Butonlarını Çiz
-        drawToggle(context, "Aimbot", CheatManager.aimbot, cx + 120, cy + 40, mouseX, mouseY);
-        drawToggle(context, "KillAura", CheatManager.killAura, cx + 120, cy + 70, mouseX, mouseY);
-        drawToggle(context, "SilentAim", CheatManager.silentAim, cx + 120, cy + 100, mouseX, mouseY);
-        drawToggle(context, "Spinbot", CheatManager.spinbot, cx + 120, cy + 130, mouseX, mouseY);
-        drawToggle(context, "Jitter", CheatManager.jitter, cx + 120, cy + 160, mouseX, mouseY);
-        
-        drawToggle(context, "Bunnyhop", CheatManager.bunnyhop, cx + 280, cy + 40, mouseX, mouseY);
-        drawToggle(context, "Runboost", CheatManager.runboost, cx + 280, cy + 70, mouseX, mouseY);
-        drawToggle(context, "Auto Totem", CheatManager.autoTotem, cx + 280, cy + 100, mouseX, mouseY);
-        drawToggle(context, "No Clip", CheatManager.noClip, cx + 280, cy + 130, mouseX, mouseY);
-        drawToggle(context, "Teleport", CheatManager.teleport, cx + 280, cy + 160, mouseX, mouseY);
+        // 3. İÇERİK ALANI (Tıklanabilir Modüller)
+        if (selectedTab == 0) { // COMBAT
+            drawToggle(context, "Aimbot", CheatManager.aimbot, cx + 130, cy + 50, mouseX, mouseY);
+            drawToggle(context, "KillAura", CheatManager.killAura, cx + 130, cy + 80, mouseX, mouseY);
+            drawToggle(context, "SilentAim", CheatManager.silentAim, cx + 130, cy + 110, mouseX, mouseY);
+            drawToggle(context, "Spinbot", CheatManager.spinbot, cx + 130, cy + 140, mouseX, mouseY);
+            drawToggle(context, "Jitter", CheatManager.jitter, cx + 130, cy + 170, mouseX, mouseY);
+            
+            drawToggle(context, "Bunnyhop", CheatManager.bunnyhop, cx + 290, cy + 50, mouseX, mouseY);
+            drawToggle(context, "Runboost", CheatManager.runboost, cx + 290, cy + 80, mouseX, mouseY);
+            drawToggle(context, "Auto Totem", CheatManager.autoTotem, cx + 290, cy + 110, mouseX, mouseY);
+            drawToggle(context, "No Clip", CheatManager.noClip, cx + 290, cy + 140, mouseX, mouseY);
+            drawToggle(context, "Teleport", CheatManager.teleport, cx + 290, cy + 170, mouseX, mouseY);
 
-        // Slider'ları ve diğer widget'ları çiz
+            // Slider'lar (Kendi çizimimiz)
+            drawSlider(context, "Spin Speed", CheatManager.spinSpeed, 1, 180, cx + 130, cy + 210, 300, mouseX, mouseY, 0);
+            drawSlider(context, "SilentAim FOV", CheatManager.silentAimFov, 30, 360, cx + 130, cy + 240, 300, mouseX, mouseY, 1);
+            drawSlider(context, "KillAura Range", CheatManager.killAuraRange, 3, 6, cx + 130, cy + 270, 300, mouseX, mouseY, 2);
+        } else if (selectedTab == 1) { // MOVEMENT
+            drawToggle(context, "Bunnyhop", CheatManager.bunnyhop, cx + 130, cy + 50, mouseX, mouseY);
+            drawToggle(context, "Runboost", CheatManager.runboost, cx + 130, cy + 80, mouseX, mouseY);
+            drawToggle(context, "No Clip", CheatManager.noClip, cx + 130, cy + 110, mouseX, mouseY);
+            
+            drawSlider(context, "Runboost Mult", CheatManager.runboostMultiplier, 1.0f, 3.0f, cx + 130, cy + 150, 300, mouseX, mouseY, 3);
+        }
+
         super.render(context, mouseX, mouseY, delta);
     }
 
+    // --- ÇİZİM YARDIMCILARI ---
+
     private void drawToggle(DrawContext context, String name, boolean state, int x, int y, int mx, int my) {
-        int width = 110;
-        int height = 20;
+        int w = 140, h = 22;
+        drawRoundedRect(context, x, y, w, h, 4, new Color(35, 35, 40, 255).getRGB());
         
-        // Kutu arka planı
-        drawRoundedRect(context, x, y, width, height, 4, new Color(30, 30, 38, 200).getRGB());
+        context.drawText(this.textRenderer, name, x + 10, y + 7, new Color(220, 220, 220).getRGB(), false);
+
+        int swX = x + w - 30;
+        int swY = y + 5;
+        // Switch arka planı
+        drawRoundedRect(context, swX, swY, 22, 12, 6, state ? new Color(100, 150, 255).getRGB() : new Color(60, 60, 65).getRGB());
+        // Switch topu
+        drawRoundedRect(context, swX + (state ? 11 : 1), swY - 2, 14, 14, 7, new Color(240, 240, 240).getRGB());
+    }
+
+    private void drawSlider(DrawContext context, String name, float val, float min, float max, int x, int y, int w, int mx, int my, int id) {
+        int h = 20;
+        drawRoundedRect(context, x, y, w, h, 4, new Color(35, 35, 40, 255).getRGB());
         
-        // İsim
         context.drawText(this.textRenderer, name, x + 8, y + 6, new Color(200, 200, 200).getRGB(), false);
+        context.drawText(this.textRenderer, String.format("%.1f", val), x + w - 30, y + 6, new Color(100, 150, 255).getRGB(), false);
 
-        // Toggle Switch (Yuvarlak animasyonlu)
-        int swX = x + width - 30;
-        int swY = y + 4;
-        drawRoundedRect(context, swX, swY, 24, 12, 6, state ? new Color(80, 120, 255).getRGB() : new Color(60, 60, 70).getRGB());
-        drawRoundedRect(context, swX + (state ? 12 : 0), swY - 2, 16, 16, 8, new Color(240, 240, 240).getRGB());
+        // Slider çubuğu
+        int barX = x + 90;
+        int barY = y + 9;
+        int barW = w - 130;
+        
+        drawRoundedRect(context, barX, barY, barW, 2, 1, new Color(50, 50, 60).getRGB());
+        
+        float pct = (val - min) / (max - min);
+        int fillW = (int)(barW * pct);
+        drawRoundedRect(context, barX, barY, fillW, 2, 1, new Color(100, 150, 255).getRGB());
+        
+        // Slider topuzu
+        drawRoundedRect(context, barX + fillW - 3, barY - 3, 6, 8, 3, new Color(255, 255, 255).getRGB());
     }
 
-    private void drawRoundedRect(DrawContext context, int x, int y, int width, int height, int radius, int color) {
-        // DrawContext vanilla yuvarlak çizim desteklemediği için köşeleri ve ortayı dolduruyoruz
-        context.fill(x + radius, y, x + width - radius, y + height, color);
-        context.fill(x, y + radius, x + width, y + height - radius, color);
-        // Basit köşe dolgusu (tam yuvarlak değil ama şık durur)
-        context.fill(x + 2, y + 2, x + radius, y + radius, color);
-        context.fill(x + width - radius, y + 2, x + width - 2, y + radius, color);
-        context.fill(x + 2, y + height - radius, x + radius, y + height - 2, color);
-        context.fill(x + width - radius, y + height - radius, x + width - 2, y + height - 2, color);
+    private void drawRoundedRect(DrawContext context, int x, int y, int w, int h, int r, int color) {
+        context.fill(x + r, y, x + w - r, y + h, color);
+        context.fill(x, y + r, x + r, y + h - r, color);
+        context.fill(x + w - r, y + r, x + w, y + h - r, color);
+        // Köşe dolguları (daha yuvarlak görünmesi için)
+        context.fill(x + 1, y + 1, x + r, y + r, color);
+        context.fill(x + w - r, y + 1, x + w - 1, y + r, color);
+        context.fill(x + 1, y + h - r, x + r, y + h - 1, color);
+        context.fill(x + w - r, y + h - r, x + w - 1, y + h - 1, color);
     }
+
+    // --- ETKİLEŞİM (FARE) ---
 
     @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        int cx = this.width / 2 - 200;
-        int cy = this.height / 2 - 150;
+    public boolean mouseClicked(double mx, double my, int button) {
+        int cx = this.width / 2 - 220;
+        int cy = this.height / 2 - 160;
 
-        // Sidebar tıklamaları
+        // Sekme tıklamaları
         for (int i = 0; i < tabs.length; i++) {
-            int ty = cy + 40 + (i * 25);
-            if (mouseX >= cx && mouseX <= cx + 100 && mouseY >= ty && mouseY <= ty + 20) {
+            int ty = cy + 50 + (i * 25);
+            if (mx >= cx && mx <= cx + 110 && my >= ty && my <= ty + 20) {
                 selectedTab = i;
-                this.init(); // Slider'ları güncelle
                 return true;
             }
         }
 
-        // Toggle tıklamaları (Sadece Combat sekmesinde çalışsın diye kaba bir kontrol)
+        // Toggle tıklamaları
         if (selectedTab == 0) {
-            if (clickToggle(mouseX, mouseY, cx + 120, cy + 40, 110, 20)) CheatManager.aimbot = !CheatManager.aimbot;
-            if (clickToggle(mouseX, mouseY, cx + 120, cy + 70, 110, 20)) CheatManager.killAura = !CheatManager.killAura;
-            if (clickToggle(mouseX, mouseY, cx + 120, cy + 100, 110, 20)) CheatManager.silentAim = !CheatManager.silentAim;
-            if (clickToggle(mouseX, mouseY, cx + 120, cy + 130, 110, 20)) CheatManager.spinbot = !CheatManager.spinbot;
-            if (clickToggle(mouseX, mouseY, cx + 120, cy + 160, 110, 20)) CheatManager.jitter = !CheatManager.jitter;
+            if (clickToggle(mx, my, cx + 130, cy + 50)) CheatManager.aimbot = !CheatManager.aimbot;
+            if (clickToggle(mx, my, cx + 130, cy + 80)) CheatManager.killAura = !CheatManager.killAura;
+            if (clickToggle(mx, my, cx + 130, cy + 110)) CheatManager.silentAim = !CheatManager.silentAim;
+            if (clickToggle(mx, my, cx + 130, cy + 140)) CheatManager.spinbot = !CheatManager.spinbot;
+            if (clickToggle(mx, my, cx + 130, cy + 170)) CheatManager.jitter = !CheatManager.jitter;
 
-            if (clickToggle(mouseX, mouseY, cx + 280, cy + 40, 110, 20)) CheatManager.bunnyhop = !CheatManager.bunnyhop;
-            if (clickToggle(mouseX, mouseY, cx + 280, cy + 70, 110, 20)) CheatManager.runboost = !CheatManager.runboost;
-            if (clickToggle(mouseX, mouseY, cx + 280, cy + 100, 110, 20)) CheatManager.autoTotem = !CheatManager.autoTotem;
-            if (clickToggle(mouseX, mouseY, cx + 280, cy + 130, 110, 20)) CheatManager.noClip = !CheatManager.noClip;
-            if (clickToggle(mouseX, mouseY, cx + 280, cy + 160, 110, 20)) CheatManager.teleport = !CheatManager.teleport;
+            if (clickToggle(mx, my, cx + 290, cy + 50)) CheatManager.bunnyhop = !CheatManager.bunnyhop;
+            if (clickToggle(mx, my, cx + 290, cy + 80)) CheatManager.runboost = !CheatManager.runboost;
+            if (clickToggle(mx, my, cx + 290, cy + 110)) CheatManager.autoTotem = !CheatManager.autoTotem;
+            if (clickToggle(mx, my, cx + 290, cy + 140)) CheatManager.noClip = !CheatManager.noClip;
+            if (clickToggle(mx, my, cx + 290, cy + 170)) CheatManager.teleport = !CheatManager.teleport;
+
+            // Slider tıklama algılama
+            if (clickSlider(mx, my, cx + 130, cy + 210, 300)) activeSlider = 0;
+            if (clickSlider(mx, my, cx + 130, cy + 240, 300)) activeSlider = 1;
+            if (clickSlider(mx, my, cx + 130, cy + 270, 300)) activeSlider = 2;
+        } else if (selectedTab == 1) {
+            if (clickToggle(mx, my, cx + 130, cy + 50)) CheatManager.bunnyhop = !CheatManager.bunnyhop;
+            if (clickToggle(mx, my, cx + 130, cy + 80)) CheatManager.runboost = !CheatManager.runboost;
+            if (clickToggle(mx, my, cx + 130, cy + 110)) CheatManager.noClip = !CheatManager.noClip;
+
+            if (clickSlider(mx, my, cx + 130, cy + 150, 300)) activeSlider = 3;
         }
-        
-        return super.mouseClicked(mouseX, mouseY, button);
+
+        return super.mouseClicked(mx, my, button);
     }
 
-    private boolean clickToggle(double mx, double my, int x, int y, int w, int h) {
-        return mx >= x && mx <= x + w && my >= y && my <= y + h;
+    @Override
+    public boolean mouseReleased(double mx, double my, int button) {
+        activeSlider = -1;
+        return super.mouseReleased(mx, my, button);
+    }
+
+    @Override
+    public boolean mouseDragged(double mx, double my, int button, double dx, double dy) {
+        int cx = this.width / 2 - 220;
+        if (activeSlider != -1) {
+            // Slider çubuğunun başlangıç noktası X: cx + 130 + 90 = cx + 220
+            double relX = mx - (cx + 220);
+            double pct = Math.max(0, Math.min(1, relX / 170.0)); // 170 = bar genişliği
+
+            if (activeSlider == 0) CheatManager.spinSpeed = (float)(1 + pct * 179);
+            if (activeSlider == 1) CheatManager.silentAimFov = (float)(30 + pct * 330);
+            if (activeSlider == 2) CheatManager.killAuraRange = (float)(3 + pct * 3);
+            if (activeSlider == 3) CheatManager.runboostMultiplier = (float)(1.0 + pct * 2.0);
+            return true;
+        }
+        return super.mouseDragged(mx, my, button, dx, dy);
+    }
+
+    private boolean clickToggle(double mx, double my, int x, int y) {
+        return mx >= x && mx <= x + 140 && my >= y && my <= y + 22;
+    }
+
+    private boolean clickSlider(double mx, double my, int x, int y, int w) {
+        return mx >= x && mx <= x + w && my >= y && my <= y + 20;
     }
 }
